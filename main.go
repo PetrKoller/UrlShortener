@@ -13,6 +13,7 @@ func main() {
 	pathsToUrls := map[string]string{
 		"/urlshort-godoc": "https://godoc.org/github.com/gophercises/urlshort",
 		"/yaml-godoc":     "https://godoc.org/gopkg.in/yaml.v2",
+		"/tst":            "https://www.google.com",
 	}
 	mapHandler := urlshort.MapHandler(pathsToUrls, mux)
 
@@ -22,8 +23,7 @@ func main() {
 - path: /urlshort
   url: https://github.com/gophercises/urlshort
 - path: /urlshort-final
-  url: https://github.com/gophercises/urlshort/tree/solution
-`
+  url: https://github.com/gophercises/urlshort/tree/solution`
 
 	yamlHandler, err := urlshort.YAMLHandler([]byte(yaml), mapHandler)
 	if err != nil {
