@@ -1,16 +1,79 @@
 package urlshort
 
 import (
+	"encoding/json"
 	"errors"
+	"github.com/boltdb/bolt"
 	"gopkg.in/yaml.v2"
 	"net/http"
 )
 
-var duplicatedPathErr = errors.New("duplicated path, path has already got assigned url")
+var DuplicatedPathErr = errors.New("duplicated path, path has already got assigned url")
 
-type shortenedUrl struct {
-	Path string `yaml:"path"`
-	Url  string `yaml:"url"`
+func DBHandler(db *bolt.DB, fallback http.Handler) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+
+	}
+}
+
+// YAMLHandler will parse the provided YAML and then return
+// an http.HandlerFunc (which also implements http.Handler)
+// that will attempt to map any paths to their corresponding
+// URL. If the path is not provided in the YAML, then the
+// fallback http.Handler will be called instead.
+//
+// YAML is expected to be in the format:
+//
+//     - path: /some-path
+//       url: https://www.some-url.com/demo
+//
+// The only errors that can be returned all related to having
+// invalid YAML data or DuplicatedPathErr .
+//
+func YAMLHandler(ymlBytes []byte, fallback http.Handler) (http.HandlerFunc, error) {
+	yamlParsed, err := parseYaml(ymlBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	pathMap, err := buildMap(yamlParsed)
+	if err != nil {
+		return nil, err
+	}
+
+	return MapHandler(pathMap, fallback), nil
+}
+
+// JSONHandler will parse the provided JSON and then return
+// an http.HandlerFunc (which also implements http.Handler)
+// that will attempt to map any paths to their corresponding
+// URL. If the path is not provided in the JSON, then the
+// fallback http.Handler will be called instead.
+//
+// JSON is expected to be in the format:
+//
+//     [
+//		  	{
+//				"path": "/some-path",
+//				"url": "https://www.some-url.com/demo",
+//			}
+//     ]
+//
+// The only errors that can be returned all related to having
+// invalid JSON data.
+//
+func JSONHandler(jsonBytes []byte, fallback http.Handler) (http.HandlerFunc, error) {
+	jsonParsed, err := parseJson(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	pathMap, err := buildMap(jsonParsed)
+	if err != nil {
+		return nil, err
+	}
+
+	return MapHandler(pathMap, fallback), nil
 }
 
 // MapHandler will return an http.HandlerFunc (which also
@@ -30,40 +93,10 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 	}
 }
 
-// YAMLHandler will parse the provided YAML and then return
-// an http.HandlerFunc (which also implements http.Handler)
-// that will attempt to map any paths to their corresponding
-// URL. If the path is not provided in the YAML, then the
-// fallback http.Handler will be called instead.
-//
-// YAML is expected to be in the format:
-//
-//     - path: /some-path
-//       url: https://www.some-url.com/demo
-//
-// The only errors that can be returned all related to having
-// invalid YAML data.
-//
-// See MapHandler to create a similar http.HandlerFunc via
-// a mapping of paths to urls.
-func YAMLHandler(yml []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	yamlParsed, err := parseYaml(yml)
-	if err != nil {
-		return nil, err
-	}
+func parseYaml(ymlBytes []byte) ([]ShortenedUrl, error) {
+	var result []ShortenedUrl
 
-	pathMap, err := buildMap(yamlParsed)
-	if err != nil {
-		return nil, err
-	}
-
-	return MapHandler(pathMap, fallback), nil
-}
-
-func parseYaml(yml []byte) ([]shortenedUrl, error) {
-	var result []shortenedUrl
-
-	err := yaml.Unmarshal(yml, &result)
+	err := yaml.Unmarshal(ymlBytes, &result)
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +104,23 @@ func parseYaml(yml []byte) ([]shortenedUrl, error) {
 	return result, nil
 }
 
-func buildMap(shortenedUrls []shortenedUrl) (map[string]string, error) {
+func parseJson(jsonBytes []byte) ([]ShortenedUrl, error) {
+	var result []ShortenedUrl
+
+	err := json.Unmarshal(jsonBytes, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func buildMap(shortenedUrls []ShortenedUrl) (map[string]string, error) {
 	urlMap := make(map[string]string, len(shortenedUrls))
 
 	for _, shortened := range shortenedUrls {
 		if _, ok := urlMap[shortened.Path]; ok {
-			return nil, duplicatedPathErr
+			return nil, DuplicatedPathErr
 		}
 
 		urlMap[shortened.Path] = shortened.Url

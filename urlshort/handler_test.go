@@ -66,10 +66,10 @@ func TestMapHandler_Fallback(t *testing.T) {
 //
 
 //
-// Start of YamlHandler testing
+// Start of YAMLHandler testing
 //
 
-func TestYAMLHandler(t *testing.T) {
+func TestYAMLHandler_Redirect(t *testing.T) {
 	t.Parallel()
 
 	yaml := `
@@ -78,6 +78,94 @@ func TestYAMLHandler(t *testing.T) {
 - path: /urlshort-final
   url: https://github.com/gophercises/urlshort/tree/solution`
 
+	testHandlerRedirect(t, []byte(yaml), YAMLHandler)
+}
+
+func TestYAMLHandler_InvalidYaml(t *testing.T) {
+	t.Parallel()
+
+	xml := `<xml>
+		<path>/urlshort</path>
+<url>https://github.com/gophercises/urlshort</url>
+</xml>
+`
+
+	testInvalidData(t, []byte(xml), YAMLHandler)
+}
+
+func TestYAMLHandler_AlreadyContainsPath(t *testing.T) {
+	t.Parallel()
+
+	yaml := `
+- path: /urlshort
+  url: https://github.com/gophercises/urlshort
+- path: /urlshort
+  url: https://github.com/gophercises/urlshort/tree/solution`
+
+	testDuplicatedPath(t, []byte(yaml), YAMLHandler)
+}
+
+//
+// End of YAMLHandler testing
+//
+
+//
+// Start of JSONHandler testing
+//
+
+func TestJSONHandler_Redirect(t *testing.T) {
+	t.Parallel()
+
+	json := `
+[
+	{
+		"path": "/urlshort",
+		"url": "https://github.com/gophercises/urlshort"
+	},
+	{
+		"path": "/urlshort-final",
+		"url": "https://github.com/gophercises/urlshort/tree/solution"
+	}
+]`
+
+	testHandlerRedirect(t, []byte(json), JSONHandler)
+}
+
+func TestJSONHandler_InvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	xml := `<xml>
+		<path>/urlshort</path>
+<url>https://github.com/gophercises/urlshort</url>
+</xml>
+`
+
+	testInvalidData(t, []byte(xml), JSONHandler)
+}
+
+func TestJSONHandler_AlreadyContainsPath(t *testing.T) {
+	t.Parallel()
+
+	json := `
+[
+	{
+		"path": "/urlshort",
+		"url": "https://github.com/gophercises/urlshort"
+	},
+	{
+		"path": "/urlshort",
+		"url": "https://github.com/gophercises/urlshort/tree/solution"
+	}
+]`
+
+	testDuplicatedPath(t, []byte(json), JSONHandler)
+}
+
+//
+// End of JSONHandler testing
+//
+
+func testHandlerRedirect(t *testing.T, dataBytes []byte, handler func(ymlBytes []byte, fallback http.Handler) (http.HandlerFunc, error)) {
 	fallbackHandlerTestFail := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Fail(t, "Should've been redirected")
 	})
@@ -130,10 +218,10 @@ func TestYAMLHandler(t *testing.T) {
 
 			rr := httptest.NewRecorder()
 
-			yamlHandler, err := YAMLHandler([]byte(yaml), test.fallbackHandler)
+			handlerToTest, err := handler(dataBytes, test.fallbackHandler)
 			assert.NoError(t, err)
 
-			yamlHandler.ServeHTTP(rr, request)
+			handlerToTest.ServeHTTP(rr, request)
 			assert.Equal(t, test.expectedCode, rr.Code)
 
 			if test.fallbackCall {
@@ -143,34 +231,14 @@ func TestYAMLHandler(t *testing.T) {
 	}
 }
 
-func TestYAMLHandler_InvalidYaml(t *testing.T) {
-	t.Parallel()
-
-	xml := `<xml>
-		<path>/urlshort</path>
-<url>https://github.com/gophercises/urlshort</url>
-</xml>
-`
-
-	_, err := YAMLHandler([]byte(xml), nil)
+func testInvalidData(t *testing.T, invalidDataBytes []byte, handler func(ymlBytes []byte, fallback http.Handler) (http.HandlerFunc, error)) {
+	_, err := handler(invalidDataBytes, nil)
 
 	assert.Error(t, err)
 }
 
-func TestYAMLHandler_AlreadyContainsPath(t *testing.T) {
-	t.Parallel()
+func testDuplicatedPath(t *testing.T, dataBytes []byte, handler func(ymlBytes []byte, fallback http.Handler) (http.HandlerFunc, error)) {
+	_, err := handler(dataBytes, nil)
 
-	yaml := `
-- path: /urlshort
-  url: https://github.com/gophercises/urlshort
-- path: /urlshort
-  url: https://github.com/gophercises/urlshort/tree/solution`
-
-	_, err := YAMLHandler([]byte(yaml), nil)
-
-	assert.ErrorIs(t, err, duplicatedPathErr)
+	assert.ErrorIs(t, err, DuplicatedPathErr)
 }
-
-//
-// End of YamlHandler testing
-//

@@ -1,12 +1,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"github.com/boltdb/bolt"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"urlshortener/urlshort"
 )
 
 func main() {
+	filename := flag.String("yaml", "urls.yaml", "a yaml file containing shortened url and path")
+	flag.Parse()
+
+	db, err := bolt.Open("my.db", 0666, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	if err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("MyBucket"))
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte("answer"), []byte("4445"))
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("MyBucket"))
+		v := b.Get([]byte("answer"))
+		fmt.Printf("The answer is: %s\n", v)
+		return nil
+	})
+
 	mux := defaultMux()
 
 	// Build the MapHandler using the mux as the fallback
@@ -17,15 +47,12 @@ func main() {
 	}
 	mapHandler := urlshort.MapHandler(pathsToUrls, mux)
 
-	// Build the YAMLHandler using the mapHandler as the
-	// fallback
-	yaml := `
-- path: /urlshort
-  url: https://github.com/gophercises/urlshort
-- path: /urlshort-final
-  url: https://github.com/gophercises/urlshort/tree/solution`
+	yamlFileBytes, err := ioutil.ReadFile(*filename)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	yamlHandler, err := urlshort.YAMLHandler([]byte(yaml), mapHandler)
+	yamlHandler, err := urlshort.YAMLHandler(yamlFileBytes, mapHandler)
 	if err != nil {
 		panic(err)
 	}
