@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/boltdb/bolt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"urlshortener/storage"
 	"urlshortener/urlshort"
 )
 
@@ -14,28 +14,21 @@ func main() {
 	filename := flag.String("yaml", "urls.yaml", "a yaml file containing shortened url and path")
 	flag.Parse()
 
-	db, err := bolt.Open("my.db", 0666, nil)
-	if err != nil {
+	boltDB := storage.NewBoltStorage("test.db", 0666, nil)
+
+	if err := boltDB.Connect(); err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer boltDB.Close()
 
-	if err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte("MyBucket"))
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte("answer"), []byte("4445"))
-	}); err != nil {
-		log.Fatal(err)
+	_, _ = boltDB.InsertOne(&urlshort.ShortenedUrl{Path: "test", Url: "https://www.google.com"})
+
+	su, err := boltDB.FindOne("tedsst")
+	if err == storage.ShortenedUrlNotFound {
+		fmt.Printf("Not found")
+	} else {
+		fmt.Printf("%+v", su)
 	}
-
-	db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("MyBucket"))
-		v := b.Get([]byte("answer"))
-		fmt.Printf("The answer is: %s\n", v)
-		return nil
-	})
 
 	mux := defaultMux()
 

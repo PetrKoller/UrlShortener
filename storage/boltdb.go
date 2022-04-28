@@ -8,6 +8,7 @@ import (
 )
 
 var BucketDoesNotExistErr = errors.New("bucket doesn't exist")
+var ShortenedUrlNotFound = errors.New("shortened url not found")
 
 const shortenedUrlBucket string = "ShortenedUrlBucket"
 
@@ -37,7 +38,7 @@ func (boltStorage *BoltStorage) Connect() error {
 	}
 
 	return boltStorage.db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(shortenedUrlBucket))
+		_, err = tx.CreateBucketIfNotExists([]byte(shortenedUrlBucket))
 
 		return err
 	})
@@ -72,8 +73,19 @@ func (boltStorage *BoltStorage) FindOne(path string) (*urlshort.ShortenedUrl, er
 		}
 
 		urlBytes := b.Get([]byte(path))
-		if urlBytes == nil
-	}); err != nil {
+		if urlBytes == nil {
+			return ShortenedUrlNotFound
+		}
 
+		found = urlshort.ShortenedUrl{
+			Path: path,
+			Url:  string(urlBytes),
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
 	}
+
+	return &found, nil
 }
