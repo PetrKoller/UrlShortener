@@ -1,18 +1,35 @@
-package urlshort
+package handler
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/boltdb/bolt"
+	"fmt"
 	"gopkg.in/yaml.v2"
 	"net/http"
+	"urlshortener/urlshort"
 )
 
 var DuplicatedPathErr = errors.New("duplicated path, path has already got assigned url")
 
-func DBHandler(db *bolt.DB, fallback http.Handler) http.HandlerFunc {
+// DBHandler looks for given path in database. If given path doesn't exist, fallback handler is called.
+func DBHandler(urlStorage urlshort.PathUrlStorage, fallback http.Handler) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
+		fmt.Printf("Called DB handler for path: %v\n", request.URL.Path)
 
+		shortenedUrl, err := urlStorage.FindOne(request.URL.Path)
+		if err == urlshort.ShortenedUrlNotFoundErr {
+			fmt.Println(err)
+			fallback.ServeHTTP(response, request)
+
+			return
+		} else if err != nil {
+			fmt.Println(err)
+			http.Error(response, "Database error", http.StatusInternalServerError)
+
+			return
+		}
+
+		http.Redirect(response, request, shortenedUrl.Url, http.StatusSeeOther)
 	}
 }
 
@@ -84,6 +101,8 @@ func JSONHandler(jsonBytes []byte, fallback http.Handler) (http.HandlerFunc, err
 // http.Handler will be called instead.
 func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
+		fmt.Printf("Called map handler for path: %v\n", request.URL.Path)
+
 		val, ok := pathsToUrls[request.URL.Path]
 		if !ok {
 			fallback.ServeHTTP(response, request)
@@ -93,8 +112,8 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 	}
 }
 
-func parseYaml(ymlBytes []byte) ([]ShortenedUrl, error) {
-	var result []ShortenedUrl
+func parseYaml(ymlBytes []byte) ([]urlshort.PathUrl, error) {
+	var result []urlshort.PathUrl
 
 	err := yaml.Unmarshal(ymlBytes, &result)
 	if err != nil {
@@ -104,8 +123,8 @@ func parseYaml(ymlBytes []byte) ([]ShortenedUrl, error) {
 	return result, nil
 }
 
-func parseJson(jsonBytes []byte) ([]ShortenedUrl, error) {
-	var result []ShortenedUrl
+func parseJson(jsonBytes []byte) ([]urlshort.PathUrl, error) {
+	var result []urlshort.PathUrl
 
 	err := json.Unmarshal(jsonBytes, &result)
 	if err != nil {
@@ -115,7 +134,7 @@ func parseJson(jsonBytes []byte) ([]ShortenedUrl, error) {
 	return result, nil
 }
 
-func buildMap(shortenedUrls []ShortenedUrl) (map[string]string, error) {
+func buildMap(shortenedUrls []urlshort.PathUrl) (map[string]string, error) {
 	urlMap := make(map[string]string, len(shortenedUrls))
 
 	for _, shortened := range shortenedUrls {

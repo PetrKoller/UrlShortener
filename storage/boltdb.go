@@ -2,13 +2,14 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"github.com/boltdb/bolt"
+	"golang.org/x/sync/errgroup"
 	"os"
 	"urlshortener/urlshort"
 )
 
 var BucketDoesNotExistErr = errors.New("bucket doesn't exist")
-var ShortenedUrlNotFound = errors.New("shortened url not found")
 
 const shortenedUrlBucket string = "ShortenedUrlBucket"
 
@@ -48,7 +49,10 @@ func (boltStorage *BoltStorage) Close() error {
 	return boltStorage.db.Close()
 }
 
-func (boltStorage *BoltStorage) InsertOne(su *urlshort.ShortenedUrl) (string, error) {
+// InsertOne inserts PathUrl object into database.
+func (boltStorage *BoltStorage) InsertOne(su *urlshort.PathUrl) (string, error) {
+	fmt.Printf("Inserting %+v\n", su)
+
 	if err := boltStorage.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(shortenedUrlBucket))
 		if b == nil {
@@ -63,8 +67,10 @@ func (boltStorage *BoltStorage) InsertOne(su *urlshort.ShortenedUrl) (string, er
 	return su.Path, nil
 }
 
-func (boltStorage *BoltStorage) FindOne(path string) (*urlshort.ShortenedUrl, error) {
-	var found urlshort.ShortenedUrl
+// FindOne looks for PathUrl object by given path. ShortenedUrlNotFoundErr is returned, if given path doesn't exist in database
+func (boltStorage *BoltStorage) FindOne(path string) (*urlshort.PathUrl, error) {
+	fmt.Printf("Looking for path: %v\n", path)
+	var found urlshort.PathUrl
 
 	if err := boltStorage.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(shortenedUrlBucket))
@@ -74,10 +80,10 @@ func (boltStorage *BoltStorage) FindOne(path string) (*urlshort.ShortenedUrl, er
 
 		urlBytes := b.Get([]byte(path))
 		if urlBytes == nil {
-			return ShortenedUrlNotFound
+			return urlshort.ShortenedUrlNotFoundErr
 		}
 
-		found = urlshort.ShortenedUrl{
+		found = urlshort.PathUrl{
 			Path: path,
 			Url:  string(urlBytes),
 		}
@@ -88,4 +94,29 @@ func (boltStorage *BoltStorage) FindOne(path string) (*urlshort.ShortenedUrl, er
 	}
 
 	return &found, nil
+}
+
+// CreateInitData creates initial data from given slice of PathUrl
+func (boltStorage *BoltStorage) CreateInitData(urls []urlshort.PathUrl) error {
+	g := new(errgroup.Group)
+
+	for i := range urls {
+		url := urls[i]
+
+		g.Go(func() error {
+			inserted, err := boltStorage.InsertOne(&url)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Successfully inserted %v\n", inserted)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	return nil
 }

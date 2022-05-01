@@ -1,0 +1,10 @@
+[
+  {
+    "path": "/test1",
+    "url":  "https://www.facebook.com"
+  },
+  {
+    "path": "/test2",
+    "url":  "https://www.youtube.com"
+  }
+]
